@@ -4,6 +4,11 @@ from ultralytics import YOLO
 import torch
 from poses_detection.hands_up import check_hand_raised
 from poses_detection.squatting import check_squat
+from poses_detection.shooter_pose import (
+    check_shooter_pose,
+    check_shooter_pose_advanced,
+)
+from poses_detection.shooting_utils import ShootingPoseAnalyzer
 import datetime as dt
 
 
@@ -89,6 +94,9 @@ def process_video_with_pose_estimation(input_path, output_path, model_name):
     LINE_COLOR = (0, 255, 0)  # Зеленый для линий
     BOX_COLOR = (255, 0, 0)  # Синий для боксов
 
+    shooting_analyzer = ShootingPoseAnalyzer(window_size=15, confirmation_frames=5)
+    shooter_history = []
+
     # --- 5. Обработка каждого кадра видео ---
     frame_count = 0
     while cap.isOpened():
@@ -136,7 +144,12 @@ def process_video_with_pose_estimation(input_path, output_path, model_name):
                     # --- Рисование подписи 'human' ---
                     hand_status = check_hand_raised(points, confs)
                     squat_status = check_squat(points, confs)
-                    label = f"human {confidence:.2f}{hand_status}{squat_status}"
+                    shooter_result, shooter_history = check_shooter_pose_advanced(
+                        points, confs, history=shooter_history
+                    )
+                    shooting_analyzer.is_consistent_shooting_stance(points, confs)
+
+                    label = f"human {confidence:.2f}{hand_status}{squat_status}{shooter_result}"
                     label_size, base_line = cv2.getTextSize(
                         label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2
                     )
