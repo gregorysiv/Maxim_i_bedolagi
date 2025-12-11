@@ -193,7 +193,7 @@ def check_shooter_pose(
         )
         return " (Shooting Stance)"
 
-    print(f"  Поза стрелка не обнаружена, критериев выполнено: {criteria_met}/{max_criteria}")
+    # print(f"  Поза стрелка не обнаружена, критериев выполнено: {criteria_met}/{max_criteria}")
     return ""
 
 
