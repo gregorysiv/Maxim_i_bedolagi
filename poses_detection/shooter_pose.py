@@ -211,40 +211,62 @@ def check_shooter_pose_advanced(
         points (np.array): Координаты ключевых точек.
         confs (np.array): Уверенность для каждой точки.
         confidence_threshold (float): Порог уверенности.
-        history (list): История предыдущих определений.
-        min_frames_for_confirmation (int): Минимальное количество кадров для подтверждения.
+        history (dict | list | None): История предыдущих определений. Списки
+            предыдущей реализации автоматически преобразуются в словарь.
+        min_frames_for_confirmation (int): Минимальное количество кадров для
+            подтверждения изменения состояния.
 
     Returns:
         tuple: (результат, обновленная история)
     """
 
-    if history is None:
-        history = []
+    # Поддержка старого формата истории (список булевых значений)
+    if history is None or not isinstance(history, dict):
+        history = {
+            "detections": list(history) if isinstance(history, list) else [],
+            "state": False,
+            "frames_in_state": 0,
+            "confirmed": False,
+        }
 
     # Определяем позу на текущем кадре
     current_result = check_shooter_pose(points, confs, confidence_threshold)
     is_shooter = current_result != ""
 
-    # Добавляем результат в историю
-    history.append(is_shooter)
+    # Добавляем результат в историю и ограничиваем длину окна
+    history["detections"].append(is_shooter)
+    max_history = max(min_frames_for_confirmation * 3, 1)
+    if len(history["detections"]) > max_history:
+        history["detections"] = history["detections"][-max_history:]
 
-    # Ограничиваем размер истории
-    if len(history) > min_frames_for_confirmation * 2:
-        history = history[-min_frames_for_confirmation * 2 :]
+    # Отслеживаем продолжительность текущего состояния
+    if is_shooter == history.get("state", False):
+        history["frames_in_state"] += 1
+    else:
+        history["state"] = is_shooter
+        history["frames_in_state"] = 1
 
-    # Проверяем устойчивое определение
-    if len(history) >= min_frames_for_confirmation:
-        recent_detections = history[-min_frames_for_confirmation:]
-        detection_rate = sum(recent_detections) / len(recent_detections)
+    # Рассчитываем стабильность в окне истории
+    recent_detections = history["detections"][-min_frames_for_confirmation:]
+    detection_rate = sum(recent_detections) / len(recent_detections)
 
-        # Если в последних кадрах часто определялась поза стрелка
-        if detection_rate >= 0.7 and is_shooter:
-            return current_result, history
-        # Если поза исчезла
-        if detection_rate < 0.3 and not is_shooter:
-            return "", history
+    positive_stable = (
+        history["state"]
+        and history["frames_in_state"] >= min_frames_for_confirmation
+        and detection_rate >= 0.6
+    )
+    negative_stable = (
+        not history["state"]
+        and history["frames_in_state"] >= min_frames_for_confirmation
+        and detection_rate <= 0.4
+    )
 
-    return current_result, history
+    if positive_stable:
+        history["confirmed"] = True
+    elif negative_stable:
+        history["confirmed"] = False
+
+    return (" (Shooting Stance)" if history["confirmed"] else ""), history
 
 
 def analyze_shooting_stance_details(points, confs, confidence_threshold=0.5):
